@@ -3010,7 +3010,10 @@ fn decompress_into(
         // With the official library, the linking time of Clang binary (contains 1GB of debug info
         // sections) shrinks by 30%!
         object::elf::ELFCOMPRESS_ZSTD => {
+            #[cfg(not(target_os = "scarlet"))]
             zstd::stream::Decoder::new(input)?.read_exact(out)?;
+            #[cfg(target_os = "scarlet")]
+            bail!("zstd-compressed input sections are not supported on Scarlet");
         }
         c => bail!("Unsupported compression format: {}", c),
     };

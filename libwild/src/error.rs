@@ -105,7 +105,13 @@ impl Warning {
 
 impl Display for Warning {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "wild: {} {}", "warning:".yellow(), self.message)
+        write!(
+            f,
+            "{}: {} {}",
+            crate::args::linker_program_name(),
+            "warning:".yellow(),
+            self.message
+        )
     }
 }
 
@@ -192,7 +198,11 @@ impl std::fmt::Debug for Error {
 }
 
 pub fn report_error(error: &Error) {
-    eprintln!("wild: {}: {error:?}", "error".red());
+    eprintln!(
+        "{}: {}: {error:?}",
+        crate::args::linker_program_name(),
+        "error".red()
+    );
 }
 
 pub fn report_error_and_exit(error: &Error) -> ! {

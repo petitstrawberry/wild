@@ -24,7 +24,7 @@ use crate::verbose_timing_phase;
 use colosseum::sync::Arena;
 use crossbeam_queue::SegQueue;
 use hashbrown::HashMap;
-#[cfg(not(target_family = "wasm"))]
+#[cfg(not(any(target_family = "wasm", target_os = "scarlet", feature = "scarlet")))]
 use memmap2::Mmap;
 use rayon::Scope;
 use rayon::iter::IntoParallelIterator;
@@ -102,14 +102,14 @@ pub(crate) struct FileData {
     modification_time: std::time::SystemTime,
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(not(any(target_family = "wasm", target_os = "scarlet", feature = "scarlet")))]
 #[derive(Debug)]
 struct FileBytes(Mmap);
 
-#[cfg(target_family = "wasm")]
+#[cfg(any(target_family = "wasm", target_os = "scarlet", feature = "scarlet"))]
 struct FileBytes(Vec<u8>);
 
-#[cfg(target_family = "wasm")]
+#[cfg(any(target_family = "wasm", target_os = "scarlet", feature = "scarlet"))]
 impl std::fmt::Debug for FileBytes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("FileBytes").finish_non_exhaustive()
@@ -839,7 +839,7 @@ impl FileData {
 }
 
 impl FileBytes {
-    #[cfg(not(target_family = "wasm"))]
+    #[cfg(not(any(target_family = "wasm", target_os = "scarlet", feature = "scarlet")))]
     fn read(file: &mut File, path: &Path, prepopulate_maps: bool) -> Result<Self> {
         // Safety: Unfortunately, this is a bit of a compromise. Basically this is only safe if
         // our users manage to avoid editing the input files while we've got them
@@ -870,7 +870,7 @@ impl FileBytes {
         Ok(FileBytes(bytes))
     }
 
-    #[cfg(target_family = "wasm")]
+    #[cfg(any(target_family = "wasm", target_os = "scarlet", feature = "scarlet"))]
     fn read(file: &mut File, path: &Path, _prepopulate_maps: bool) -> Result<Self> {
         use std::io::Read;
         let mut bytes = vec![];

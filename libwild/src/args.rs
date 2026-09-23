@@ -54,6 +54,20 @@ pub const WRITE_TRACE_ENV: &str = "WILD_WRITE_TRACE";
 /// inconsistency.
 pub(crate) const WRITE_VERIFY_ALLOCATIONS_ENV: &str = "WILD_VERIFY_ALLOCATIONS";
 
+/// The command name used to invoke the linker. The Scarlet toolchain exposes
+/// this binary as `rust-lld`, while retaining `wild` as the implementation
+/// command for diagnostics and provenance.
+pub(crate) fn linker_program_name() -> String {
+    std::env::args_os()
+        .next()
+        .as_deref()
+        .and_then(|arg| Path::new(arg).file_name())
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("wild")
+        .to_owned()
+}
+
 #[derive(derive_more::Debug)]
 pub struct CommonArgs {
     pub(crate) unrecognized_options: Vec<String>,
@@ -272,14 +286,17 @@ impl Default for CommonArgs {
     fn default() -> Self {
         Self {
             available_threads: NonZeroUsize::new(1).unwrap(),
-            num_threads: None,
+            // Bring-up uses the current-thread Rayon pool; no worker stack or
+            // background file lifetime is needed for native static linking.
+            num_threads: cfg!(any(target_os = "scarlet", feature = "scarlet"))
+                .then(|| NonZeroUsize::new(1).unwrap()),
             jobserver_client: None,
             files_per_group: None,
             inputs: Vec::new(),
             file_write_mode: None,
             unrecognized_options: Vec::new(),
             save_dir: SaveDir::default(),
-            mmap_output_file: true,
+            mmap_output_file: !cfg!(any(target_os = "scarlet", feature = "scarlet")),
             prepopulate_maps: false,
             debug_fuel: None,
             should_fork: true,
@@ -360,7 +377,15 @@ impl CommonArgs {
     /// Returns a string that identifies this linker. This is written into the .comment
     /// section which usually also contains the versions of compilers that were used.
     pub(crate) fn linker_identity(&self) -> String {
-        format!("Wild {} (compatible with GNU linkers)", self.version)
+        let program_name = linker_program_name();
+        if program_name == "wild" {
+            format!("Wild {} (compatible with GNU linkers)", self.version)
+        } else {
+            format!(
+                "{program_name} (Wild {}; compatible with GNU linkers)",
+                self.version
+            )
+        }
     }
 
     /// Adds a linker script to our outputs. Note, this is only called for scripts specified via
@@ -808,7 +833,11 @@ impl<T: platform::Args> ArgumentParser<T> {
     #[must_use]
     fn generate_help(&self) -> String {
         let mut help = String::new();
-        help.push_str("USAGE:\n    wild [OPTIONS] [FILES...]\n\nOPTIONS:\n");
+        let program_name = linker_program_name();
+        let hide_implementation_options = program_name == "rust-lld";
+        help.push_str(&format!(
+            "USAGE:\n    {program_name} [OPTIONS] [FILES...]\n\nOPTIONS:\n"
+        ));
 
         let mut prefix_options = self.prefix_options.iter().collect_vec();
         prefix_options.sort_by_key(|(prefix, _)| *prefix);
@@ -824,6 +853,9 @@ impl<T: platform::Args> ArgumentParser<T> {
 
         // Collect all long options and their associated short options
         for (long_name, handler) in &self.options {
+            if hide_implementation_options && long_name.starts_with("wild-") {
+                continue;
+            }
             if !handler.help_text.is_empty() {
                 let long_suffix = handler.handler.help_suffix_long();
                 let mut option_names = vec![format!("--{long_name}{long_suffix}")];

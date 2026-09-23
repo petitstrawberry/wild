@@ -109,9 +109,17 @@ struct ZstdCompressor;
 
 impl Compressor for ZstdCompressor {
     fn compress(chunk: &[u8]) -> Result<Vec<u8>> {
-        let mut output = Vec::new();
-        zstd::stream::copy_encode(chunk, &mut output, ZSTD_COMPRESSION_LEVEL)?;
-        Ok(output)
+        #[cfg(not(target_os = "scarlet"))]
+        {
+            let mut output = Vec::new();
+            zstd::stream::copy_encode(chunk, &mut output, ZSTD_COMPRESSION_LEVEL)?;
+            Ok(output)
+        }
+        #[cfg(target_os = "scarlet")]
+        {
+            let _ = chunk;
+            bail!("zstd output compression is not supported on Scarlet");
+        }
     }
 
     fn kind() -> u32 {

@@ -146,6 +146,7 @@ use std::ops::Range;
 use std::ops::Sub;
 use std::sync::atomic::Ordering::Relaxed;
 use tracing::debug_span;
+#[cfg(not(any(target_os = "scarlet", feature = "scarlet")))]
 use uuid::Uuid;
 use zerocopy::FromBytes;
 use zerocopy::transmute_mut;
@@ -202,6 +203,7 @@ fn write_gnu_build_id_note(
     layout: &ElfLayout,
 ) -> Result {
     let hash_placeholder;
+    #[cfg(not(any(target_os = "scarlet", feature = "scarlet")))]
     let uuid_placeholder;
     let build_id = match build_id_option {
         BuildIdOption::Fast => {
@@ -210,8 +212,15 @@ fn write_gnu_build_id_note(
         }
         BuildIdOption::Hex(hex) => hex.as_slice(),
         BuildIdOption::Uuid => {
-            uuid_placeholder = Uuid::new_v4();
-            uuid_placeholder.as_bytes()
+            #[cfg(not(any(target_os = "scarlet", feature = "scarlet")))]
+            {
+                uuid_placeholder = Uuid::new_v4();
+                uuid_placeholder.as_bytes()
+            }
+            #[cfg(any(target_os = "scarlet", feature = "scarlet"))]
+            bail!(
+                "UUID build IDs are unavailable on Scarlet; use --build-id=fast or an explicit ID"
+            );
         }
         BuildIdOption::None => return Ok(()),
     };
@@ -414,7 +423,11 @@ fn populate_file_header<A: Arch<Platform = Elf>>(
     header.e_ident.class = object::elf::ELFCLASS64;
     header.e_ident.data = object::elf::ELFDATA2LSB; // Little endian
     header.e_ident.version = 1;
-    header.e_ident.os_abi = object::elf::ELFOSABI_NONE;
+    header.e_ident.os_abi = if cfg!(any(target_os = "scarlet", feature = "scarlet")) {
+        0x53
+    } else {
+        object::elf::ELFOSABI_NONE
+    };
     header.e_ident.abi_version = 0;
     header.e_ident.padding = Default::default();
     header.e_type.set(e, ty);

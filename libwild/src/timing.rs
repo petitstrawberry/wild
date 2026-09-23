@@ -4,11 +4,13 @@ use crate::args::CounterKind;
 use crate::error::AlreadyInitialised;
 use crate::error::Result;
 use crate::perf::CounterList;
+#[cfg(feature = "perfetto")]
 use anyhow::Context;
 use anyhow::anyhow;
 use crossbeam_queue::ArrayQueue;
 use std::fmt::Display;
 use std::path::PathBuf;
+#[cfg(feature = "perfetto")]
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
@@ -18,6 +20,7 @@ const PERFETTO_ENV_VAR: &str = "WILD_PERFETTO_OUT";
 
 pub fn setup() -> Result {
     if perfetto_output_file().is_some() {
+        #[cfg(feature = "perfetto")]
         perfetto_recorder::start().map_err(
             |_: perfetto_recorder::TracingDisabledAtBuildTime| {
                 anyhow!(
@@ -25,15 +28,29 @@ pub fn setup() -> Result {
                 )
             },
         )?;
+        #[cfg(not(feature = "perfetto"))]
+        return Err(anyhow!("{PERFETTO_ENV_VAR} requires --features perfetto").into());
     }
     Ok(())
 }
 
+#[cfg(not(feature = "perfetto"))]
+pub struct DisabledTraceGuard;
+
+#[cfg(not(feature = "perfetto"))]
+impl Drop for DisabledTraceGuard {
+    fn drop(&mut self) {}
+}
+
 #[macro_export]
 macro_rules! timing_guard {
-    ($($args:tt)*) => {
-        (tracing::info_span!($($args)*).entered(), perfetto_recorder::start_span!($($args)*))
-    };
+    ($($args:tt)*) => {{
+        #[cfg(feature = "perfetto")]
+        let perfetto = perfetto_recorder::start_span!($($args)*);
+        #[cfg(not(feature = "perfetto"))]
+        let perfetto = $crate::timing::DisabledTraceGuard;
+        (tracing::info_span!($($args)*).entered(), perfetto)
+    }};
 }
 
 #[macro_export]
@@ -48,6 +65,7 @@ macro_rules! timing_phase {
 #[macro_export]
 macro_rules! verbose_timing_phase {
     ($($args:tt)*) => {
+        #[cfg(feature = "perfetto")]
         perfetto_recorder::scope!($($args)*);
     };
 }
@@ -280,6 +298,12 @@ fn perfetto_output_file() -> Option<PathBuf> {
     std::env::var(PERFETTO_ENV_VAR).ok().map(PathBuf::from)
 }
 
+#[cfg(not(feature = "perfetto"))]
+pub(crate) fn finalise_perfetto_trace() -> Result {
+    Ok(())
+}
+
+#[cfg(feature = "perfetto")]
 pub(crate) fn finalise_perfetto_trace() -> Result {
     let Some(path) = perfetto_output_file() else {
         return Ok(());

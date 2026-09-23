@@ -52,6 +52,7 @@ wait-timeout.workspace = true
 
 [features]
 default = ["fork", "plugins"]
+scarlet = ["libwild/scarlet"]
 
 fork = ["libwild/fork"]
 

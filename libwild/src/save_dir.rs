@@ -479,10 +479,10 @@ fn create_symlink(target: &Path, dest_path: &Path) -> Result {
         })?;
         Ok(())
     }
-    #[cfg(target_os = "wasi")]
+    #[cfg(any(target_os = "wasi", target_os = "scarlet"))]
     {
         let _ = (target, dest_path);
-        bail!("creating symlinks on wasi not supported on stable rust");
+        bail!("creating save-dir symlinks is not supported on this platform");
     }
 }
 
